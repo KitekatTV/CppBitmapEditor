@@ -226,14 +226,14 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                     uint32_t source_x = std::round(x / x_ratio);
                     uint32_t source_y = std::round(y / y_ratio);
 
-                    uint32_t source_pixel = channels * (source_y * info_header.image_width + source_x);
+                    Color source_pixel = get_pixel(source_x, source_y);
 
-                    new_pixel_data.push_back(pixel_data[source_pixel + 0]);
-                    new_pixel_data.push_back(pixel_data[source_pixel + 1]);
-                    new_pixel_data.push_back(pixel_data[source_pixel + 2]);
+                    new_pixel_data.push_back(source_pixel.B);
+                    new_pixel_data.push_back(source_pixel.G);
+                    new_pixel_data.push_back(source_pixel.R);
 
                     if (channels == 4)
-                        new_pixel_data.push_back(pixel_data[source_pixel + 3]);
+                        new_pixel_data.push_back(source_pixel.A);
 
                     break;
                 }
@@ -245,18 +245,23 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                     float x_diff = (x_ratio * x) - source_x;
                     float y_diff = (y_ratio * y) - source_y;
 
-                    Color A = get_pixel(source_x, source_y, channels);
-                    Color B = get_pixel(source_x + 1, source_y, channels);
-                    Color C = get_pixel(source_x, source_y + 1, channels);
-                    Color D = get_pixel(source_x + 1, source_y + 1, channels);
+                    Color Q11 = get_pixel(source_x, source_y, channels);
+                    Color Q21 = get_pixel(source_x + 1, source_y, channels);
+                    Color Q12 = get_pixel(source_x, source_y + 1, channels);
+                    Color Q22 = get_pixel(source_x + 1, source_y + 1, channels);
 
-                    float blue = A.B * (1 - x_diff) * (1 - y_diff) + B.B * x_diff * (1 - y_diff) + C.B * y_diff * (1 - x_diff) + D.B * (x_diff * y_diff);
-                    float green = A.G * (1 - x_diff) * (1 - y_diff) + B.G * x_diff * (1 - y_diff) + C.G * y_diff * (1 - x_diff) + D.G * (x_diff * y_diff);
-                    float red = A.R * (1 - x_diff) * (1 - y_diff) + B.R * x_diff * (1 - y_diff) + C.R * y_diff * (1 - x_diff) + D.R * (x_diff * y_diff);
+                    float blue = Q11.B * (1 - x_diff) * (1 - y_diff) + Q21.B * x_diff * (1 - y_diff) + Q12.B * y_diff * (1 - x_diff) + Q22.B * (x_diff * y_diff);
+                    float green = Q11.G * (1 - x_diff) * (1 - y_diff) + Q21.G * x_diff * (1 - y_diff) + Q12.G * y_diff * (1 - x_diff) + Q22.G * (x_diff * y_diff);
+                    float red = Q11.R * (1 - x_diff) * (1 - y_diff) + Q21.R * x_diff * (1 - y_diff) + Q12.R * y_diff * (1 - x_diff) + Q22.R * (x_diff * y_diff);
 
                     new_pixel_data.push_back(static_cast<uint8_t>(blue));
                     new_pixel_data.push_back(static_cast<uint8_t>(green));
                     new_pixel_data.push_back(static_cast<uint8_t>(red));
+
+                    if (channels == 4) {
+                        float alpha = Q11.A * (1 - x_diff) * (1 - y_diff) + Q21.A * x_diff * (1 - y_diff) + Q12.A * y_diff * (1 - x_diff) + Q22.A * (x_diff * y_diff);
+                        new_pixel_data.push_back(static_cast<uint8_t>(alpha));
+                    }
                     break;
                 }
             }
