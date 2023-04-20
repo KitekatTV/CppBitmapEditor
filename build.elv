@@ -1,8 +1,8 @@
 use path
 
-mkdir build
-cd build
-cmake ..
+mkdir Debug
+cd Debug
+make ..
 cmake --build .
 
 if (path:is-dir 'C:\') {
