@@ -207,8 +207,17 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
 
     std::vector<uint8_t> new_pixel_data;
 
-    float x_ratio = static_cast<float>(width) / static_cast<float>(info_header.image_width);
-    float y_ratio = static_cast<float>(height) / static_cast<float>(info_header.image_height);
+    float x_ratio, y_ratio;
+    switch (mode) {
+        case Interpolation::NearestNeighbour:
+            x_ratio = static_cast<float>(width) / static_cast<float>(info_header.image_width);
+            y_ratio = static_cast<float>(height) / static_cast<float>(info_header.image_height);
+            break;
+        case Interpolation::Bilinear:
+            x_ratio = static_cast<float>(info_header.image_width - 1) / static_cast<float>(width); // NOTE: Using these ratios for NN interpolation gives an interesting result
+            y_ratio = static_cast<float>(info_header.image_height - 1) / static_cast<float>(height);
+            break;
+    }
 
     for (uint32_t y = 0; y < height; ++y) {
         for (uint32_t x = 0; x < width; ++x) {
@@ -230,8 +239,24 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                 }
 
                 case Interpolation::Bilinear: {
-                    // TODO: Bilinear Interpolation
-                    throw "Not implemented";
+                    uint32_t source_x = x_ratio * x;
+                    uint32_t source_y = y_ratio * y;
+
+                    float x_diff = (x_ratio * x) - source_x;
+                    float y_diff = (y_ratio * y) - source_y;
+
+                    Color A = get_pixel(source_x, source_y, channels);
+                    Color B = get_pixel(source_x + 1, source_y, channels);
+                    Color C = get_pixel(source_x, source_y + 1, channels);
+                    Color D = get_pixel(source_x + 1, source_y + 1, channels);
+
+                    float blue = A.B * (1 - x_diff) * (1 - y_diff) + B.B * x_diff * (1 - y_diff) + C.B * y_diff * (1 - x_diff) + D.B * (x_diff * y_diff);
+                    float green = A.G * (1 - x_diff) * (1 - y_diff) + B.G * x_diff * (1 - y_diff) + C.G * y_diff * (1 - x_diff) + D.G * (x_diff * y_diff);
+                    float red = A.R * (1 - x_diff) * (1 - y_diff) + B.R * x_diff * (1 - y_diff) + C.R * y_diff * (1 - x_diff) + D.R * (x_diff * y_diff);
+
+                    new_pixel_data.push_back(static_cast<uint8_t>(blue));
+                    new_pixel_data.push_back(static_cast<uint8_t>(green));
+                    new_pixel_data.push_back(static_cast<uint8_t>(red));
                     break;
                 }
             }
