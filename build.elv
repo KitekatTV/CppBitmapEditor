@@ -2,7 +2,7 @@ use path
 
 mkdir Debug
 cd Debug
-make ..
+cmake ..
 cmake --build .
 
 if (path:is-dir 'C:\') {
