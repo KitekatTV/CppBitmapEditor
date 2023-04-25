@@ -202,6 +202,24 @@ Bitmap& Bitmap::inverse() {
     return *this;
 }
 
+double cubic_interpolate (double Q[4], double x) {
+    //double A = (Q[3] - Q[2]) - (Q[0] - Q[1]);
+    //double B = (Q[0] - Q[1]) - A;
+    //double C = Q[2] - Q[0];
+    //double D = Q[1];
+    //return D + x * (C + x * (B + x * A));
+    return Q[1] + .5 * x * (Q[2] - Q[0] + x * (2 * Q[0] - 5 * Q[1] + 4 * Q[2] - Q[3] + x * (3 * (Q[1] - Q[2]) + Q[3]- Q[0])));
+}
+
+double bicubic_interpolate (double Q[4][4], uint32_t x, uint32_t y) {
+    double temp[4];
+    temp[0] = cubic_interpolate(Q[0], y);
+    temp[1] = cubic_interpolate(Q[1], y);
+    temp[2] = cubic_interpolate(Q[2], y);
+    temp[3] = cubic_interpolate(Q[3], y);
+    return cubic_interpolate(temp, x);
+}
+
 Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
     uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
 
@@ -216,6 +234,10 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
         case Interpolation::Bilinear:
             x_ratio = static_cast<float>(info_header.image_width - 1) / static_cast<float>(width); // NOTE: Using these ratios for NN interpolation gives an interesting result
             y_ratio = static_cast<float>(info_header.image_height - 1) / static_cast<float>(height);
+            break;
+        case Interpolation::Bicubic:
+            x_ratio = static_cast<float>(info_header.image_width) / static_cast<float>(width);
+            y_ratio = static_cast<float>(info_header.image_height) / static_cast<float>(height);
             break;
     }
 
@@ -262,6 +284,47 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                         float alpha = Q11.A * (1 - x_diff) * (1 - y_diff) + Q21.A * x_diff * (1 - y_diff) + Q12.A * y_diff * (1 - x_diff) + Q22.A * (x_diff * y_diff);
                         new_pixel_data.push_back(static_cast<uint8_t>(alpha));
                     }
+                    break;
+                }
+
+                case Interpolation::Bicubic: {
+                    float x_origin = x_ratio * x;
+                    float y_origin = y_ratio * y;
+
+                    float x_origin_floor = std::floor(x_origin);
+                    float y_origin_floor = std::floor(y_origin);
+
+                    float x_origin_frac = x_origin - x_origin_floor;
+                    float y_origin_frac = y_origin - y_origin_floor;
+
+                    double Q[4][4] {0};
+                    for (int i = 0; i < 4; ++i) {
+                        for (int j = 0; j < 4; ++j) {
+                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, info_header.image_width - 1);
+                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, info_header.image_height - 1);
+                            Q[i][j] = get_pixel(t_x, t_y, channels).B;
+                        }
+                    }
+
+                    new_pixel_data.push_back(static_cast<uint8_t>(std::round(bicubic_interpolate(Q, x_origin_frac, y_origin_frac))));
+                    for (int i = 0; i < 4; ++i) {
+                        for (int j = 0; j < 4; ++j) {
+                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, info_header.image_width - 1);
+                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, info_header.image_height - 1);
+                            Q[i][j] = get_pixel(t_x, t_y, channels).G;
+                        }
+                    }
+
+                    new_pixel_data.push_back(static_cast<uint8_t>(std::round(bicubic_interpolate(Q, x_origin_frac, y_origin_frac))));
+                    for (int i = 0; i < 4; ++i) {
+                        for (int j = 0; j < 4; ++j) {
+                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, info_header.image_width - 1);
+                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, info_header.image_height - 1);
+                            Q[i][j] = get_pixel(t_x, t_y, channels).R;
+                        }
+                    }
+
+                    new_pixel_data.push_back(static_cast<uint8_t>(std::round(bicubic_interpolate(Q, x_origin_frac, y_origin_frac))));
                     break;
                 }
             }

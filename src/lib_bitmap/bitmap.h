@@ -10,6 +10,7 @@
 enum Interpolation {
     NearestNeighbour,
     Bilinear,
+    Bicubic
 };
 
 struct Color {
