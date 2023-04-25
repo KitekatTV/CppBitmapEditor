@@ -7,9 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_executable(exe "src/main.cpp")
+add_executable(exe "src/app/main.cpp")
 
-add_subdirectory("src/lib_bitmap")
-target_link_libraries(exe PUBLIC lib_bitmap)
+add_subdirectory("src/image")
+target_link_libraries(exe PUBLIC image)
 
-target_include_directories(exe PUBLIC "src/lib_bitmap")
+target_include_directories(exe PUBLIC "src/image")

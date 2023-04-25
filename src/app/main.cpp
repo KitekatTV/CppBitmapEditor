@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 
-#include "bitmap.h"
+#include "image.h"
 
 int main() {
     bool is_windows{false};

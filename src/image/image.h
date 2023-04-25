@@ -1,5 +1,5 @@
-#ifndef BITMAP
-#define BITMAP
+#ifndef IMAGE
+#define IMAGE
 
 #include <cstdint>
 #include <fstream>

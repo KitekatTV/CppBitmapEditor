@@ -1,4 +1,4 @@
-#include "bitmap.h"
+#include "image.h"
 
 #include <algorithm>
 #include <cmath>
