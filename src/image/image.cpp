@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <type_traits>
 
 Bitmap::Bitmap(std::string file_name) {
@@ -68,46 +69,238 @@ Bitmap& Bitmap::write(std::string file_name) {
     return *this;
 }
 
-Bitmap& Bitmap::crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height) {
-    if (x0 + width > info_header.image_width || y0 + height > info_header.image_height)
+uint8_t Bitmap::get_channels() { return info_header.bits_per_pixel / 8; }
+
+uint32_t Bitmap::get_width() { return info_header.image_width; }
+
+uint32_t Bitmap::get_height() { return info_header.image_height; }
+
+uint32_t Bitmap::get_horizontal_resolution() { return info_header.x_pixels_per_meter; }
+
+uint32_t Bitmap::get_vertical_resolution() { return info_header.y_pixels_per_meter; }
+
+std::vector<uint8_t> & Bitmap::get_pixel_data() { return pixel_data; }
+
+Bitmap& Bitmap::set_dimensions(uint32_t width, uint32_t height) { info_header.image_width = width; info_header.image_height = height; return *this; }
+
+Bitmap& Bitmap::set_pixel_data(std::vector<uint8_t> new_pixel_data) { pixel_data = std::move(new_pixel_data); return *this; }
+
+Bitmap& Bitmap::crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height) { Image::crop(x0, y0, width, height); return *this; };
+
+Bitmap& Bitmap::flip() { Image::flip(); return *this; };
+
+Bitmap& Bitmap::rotate_clockwise() { Image::rotate_clockwise(); return *this; };
+
+Bitmap& Bitmap::rotate_counterclockwise() { Image::rotate_counterclockwise(); return *this; };
+
+Bitmap& Bitmap::grayscale() { Image::grayscale(); return *this; };
+
+Bitmap& Bitmap::inverse() { Image::inverse(); return *this; };
+
+Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) { Image::resize(width, height, mode); return *this; };
+
+Color Bitmap::get_pixel(uint32_t x, uint32_t y) {
+    uint32_t current_pixel = get_channels() * (y * get_width() + x);
+    std::vector<uint8_t> & pixel_data = get_pixel_data();
+
+    uint8_t B = pixel_data[current_pixel + 0];
+    uint8_t G = pixel_data[current_pixel + 1];
+    uint8_t R = pixel_data[current_pixel + 2];
+
+    return Color(R, G, B);
+}
+
+Bitmap& Bitmap::set_pixel(uint32_t x, uint32_t y, Color color) {
+    uint32_t current_pixel = get_channels() * (y * get_width() + x);
+    std::vector<uint8_t> & pixel_data = get_pixel_data();
+
+    pixel_data[current_pixel + 0] = color.B;
+    pixel_data[current_pixel + 1] = color.G;
+    pixel_data[current_pixel + 2] = color.R;
+
+    return *this;
+}
+
+GIF& GIF::read(std::string file_name) {
+    std::ifstream stream(file_name, std::ios::binary);
+
+    if (stream) {
+        stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+        uint8_t signature[3] { 0x47, 0x49, 0x46 };
+
+        if (header.signature != signature)
+            throw file_name + " is not a valid GIF file!";
+
+        stream.read(reinterpret_cast<char*>(&lsd), sizeof(lsd));
+
+        if (((lsd.packed_field >> 7) & 0b00000001) == 0b00000001) {
+            uint8_t table_size = lsd.packed_field & 0b00000111;
+            for (int i = 0; i < std::pow(2, table_size + 1); ++i) {
+                Color current_color;
+                for (int j = 0; j < 3; ++j) {
+                    uint8_t current_color_channel = 0;
+
+                    stream.read(reinterpret_cast<char*>(&current_color_channel), sizeof(current_color_channel));
+                    switch (j) {
+                        case 0:
+                            current_color.R = current_color_channel;
+                            break;
+
+                        case 1:
+                            current_color.G = current_color_channel;
+                            break;
+
+                        case 2:
+                            current_color.B = current_color_channel;
+                            break;
+                    }
+                }
+
+                global_color_table.insert(current_color);
+            }
+        }
+    }
+
+    return *this;
+}
+
+std::vector<uint8_t> GIF::GifImage::full_pixel_data() {
+    std::vector<uint8_t> data = pixel_data[0].data;
+
+    for (int i = 1; i < pixel_data.size(); ++i)
+        data.insert(data.end(), pixel_data[i].data.begin(), pixel_data[i].data.end());
+
+    return data;
+}
+
+GIF& GIF::write(std::string file_name) {
+    std::ofstream stream(file_name, std::ios::binary);
+
+    stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    stream.write(reinterpret_cast<const char*>(&lsd), sizeof(lsd));
+
+    if (((lsd.packed_field >> 7) & 0x1) == 0x1)
+        for (Color color : global_color_table)
+            stream.write(reinterpret_cast<const char*>(color.raw()), sizeof(uint8_t) * 3);
+    else
         throw;
 
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
+    for (GifImage current_image : images) {
+        stream.write(reinterpret_cast<const char*>(&current_image.image_descriptor), sizeof(current_image.image_descriptor));
+        std::set<std::string> code_table; // INFO: Special table for storing sequences of colours
+        std::vector<std::string> index_stream; // INFO: Input as color indexes from color table
+        std::vector<int> code_stream; // INFO: Output as codes from code table
+        std::string index_buffer; // INFO: Buffer for color indexes
+
+        std::vector<uint8_t> current_data = current_image.full_pixel_data();
+        for (uint8_t pixel : current_data)
+            index_stream.push_back(std::to_string(pixel));
+
+        // STEP 1: Initialize code table
+        // if (((current_image.image_descriptor.packed_field >> 7) & 0x1) == 0x1)
+        //     for (uint32_t i = 0; i < current_image.local_color_table.size(); ++i)
+        //         code_table.insert(std::to_string(i));
+        if (((lsd.packed_field >> 7) & 0x1) == 0x1)
+            for (uint32_t i = 0; i < global_color_table.size(); ++i)
+                code_table.insert(std::to_string(i));
+        else
+            throw;
+
+        code_table.insert("CC");
+        code_table.insert("EOI");
+
+        // STEP 2: Send clear code to the code stream
+        code_stream.push_back(std::distance(code_table.begin(), code_table.find("CC")));
+
+        // STEP 3: Read first value from index stream to buffer
+        index_buffer = index_stream[0];
+
+        // LOOP
+        int index = 1;
+        while (index < index_stream.size()) {
+            std::string K = index_stream[index]; // Get next index from index stream (K)
+
+            if (code_table.find(index_buffer + "," + K) != code_table.end()) {
+                index_buffer += "," + K; // Add K to the index buffer
+            } else {
+                code_table.insert(index_buffer + "," + K); // Add a new row for index buffer + K to the code table
+                code_stream.push_back(std::distance(code_table.begin(), code_table.find(index_buffer))); // Output code for just the buffer to the code stream
+                index_buffer = K; // Set index buffer to K
+                // Set K to nothing (Not required since K is local to cycle)
+            }
+
+            index++;
+        }
+
+        code_stream.push_back(std::distance(code_table.begin(), code_table.find(index_buffer))); // Output code for index buffer
+        code_stream.push_back(std::distance(code_table.begin(), code_table.find("EOI"))); // Output EOI code
+
+        stream.write(reinterpret_cast<const char*>(&code_stream), code_stream.size());
+    }
+
+    stream.write(reinterpret_cast<const char*>(&trailer), sizeof(trailer));
+
+    return *this;
+}
+
+Image& Image::crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height) {
+    if (x0 + width > get_width() || y0 + height > get_height())
+        throw;
+
     std::vector<uint8_t> new_pixel_data;
 
     for (uint32_t y = y0; y < y0 + height; ++y) {
         for (uint32_t x = x0; x < x0 + width; ++x) {
-            Color current_pixel = get_pixel(x, y, channels);
+            Color current_pixel = get_pixel(x, y);
+            // TODO: change with channel amount
             new_pixel_data.push_back(current_pixel.B);
             new_pixel_data.push_back(current_pixel.G);
             new_pixel_data.push_back(current_pixel.R);
-
-            if (channels == 4)
-                new_pixel_data.push_back(current_pixel.A);
         }
     }
 
-    info_header.image_width = width;
-    info_header.image_height = height;
-    info_header.image_size = sizeof(info_header);
-
-    pixel_data = new_pixel_data;
-    header.data_offset = sizeof(info_header) + sizeof(header);
-    header.file_size = header.data_offset + pixel_data.size();
+    set_dimensions(width, height);
+    set_pixel_data(new_pixel_data);
 
     return *this;
 }
 
-Bitmap& Bitmap::flip() {
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
+Image& Image::flip() {
+    std::vector<uint8_t> new_pixel_data;
+    new_pixel_data.resize(get_pixel_data().size());
+
+    uint8_t channels = get_channels();
+    std::vector<uint8_t> &pixel_data = get_pixel_data();
+
+    for (uint32_t y = 0; y < get_height(); ++y) {
+        for (uint32_t x = 0; x < get_width(); ++x) {
+            uint32_t source_pixel = channels * (y * get_width() + x);
+            uint32_t destination_pixel = channels * ((get_height() - y - 1) * get_width() + x);
+
+            // TODO: change with channel amount
+            new_pixel_data[destination_pixel + 0] = pixel_data[source_pixel + 0];
+            new_pixel_data[destination_pixel + 1] = pixel_data[source_pixel + 1];
+            new_pixel_data[destination_pixel + 2] = pixel_data[source_pixel + 2];
+        }
+    }
+
+    set_pixel_data(new_pixel_data);
+
+    return *this;
+}
+
+Image& Image::rotate_clockwise() {
+    uint8_t channels = get_channels();
+    std::vector<uint8_t> &pixel_data = get_pixel_data();
 
     std::vector<uint8_t> new_pixel_data;
     new_pixel_data.resize(pixel_data.size());
 
-    for (uint32_t y = 0; y < info_header.image_height; ++y) {
-        for (uint32_t x = 0; x < info_header.image_width; ++x) {
-            uint32_t source_pixel = channels * (y * info_header.image_width + x);
-            uint32_t destination_pixel = channels * ((info_header.image_height - y - 1) * info_header.image_width + x);
+    for (uint32_t y = 0; y < get_height(); ++y) {
+        for (uint32_t x = 0; x < get_width(); ++x) {
+            uint32_t source_pixel = channels * (y * get_width() + x);
+            uint32_t destination_pixel = channels * ((get_height() - y - 1) + get_height() * x);
 
             new_pixel_data[destination_pixel + 0] = pixel_data[source_pixel + 0];
             new_pixel_data[destination_pixel + 1] = pixel_data[source_pixel + 1];
@@ -118,21 +311,23 @@ Bitmap& Bitmap::flip() {
         }
     }
 
-    pixel_data = new_pixel_data;
+    set_pixel_data(new_pixel_data);
+    set_dimensions(get_height(), get_width());
 
     return *this;
 }
 
-Bitmap& Bitmap::rotate_clockwise() {
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
+Image& Image::rotate_counterclockwise() {
+    uint8_t channels = get_channels();
+    std::vector<uint8_t> &pixel_data = get_pixel_data();
 
     std::vector<uint8_t> new_pixel_data;
     new_pixel_data.resize(pixel_data.size());
 
-    for (uint32_t y = 0; y < info_header.image_height; ++y) {
-        for (uint32_t x = 0; x < info_header.image_width; ++x) {
-            uint32_t source_pixel = channels * (y * info_header.image_width + x);
-            uint32_t destination_pixel = channels * ((info_header.image_height - y - 1) + info_header.image_height * x);
+    for (uint32_t y = 0; y < get_height(); ++y) {
+        for (uint32_t x = 0; x < get_width(); ++x) {
+            uint32_t source_pixel = channels * (y * get_width() + x);
+            uint32_t destination_pixel = channels * (y + get_height() * x);
 
             new_pixel_data[destination_pixel + 0] = pixel_data[source_pixel + 0];
             new_pixel_data[destination_pixel + 1] = pixel_data[source_pixel + 1];
@@ -143,59 +338,29 @@ Bitmap& Bitmap::rotate_clockwise() {
         }
     }
 
-    pixel_data = new_pixel_data;
-    std::swap(info_header.image_width, info_header.image_height);
-    std::swap(info_header.x_pixels_per_meter, info_header.y_pixels_per_meter);
+    set_pixel_data(new_pixel_data);
+    set_dimensions(get_height(), get_width());
 
     return *this;
 }
 
-Bitmap& Bitmap::rotate_counterclockwise() {
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
-
-    std::vector<uint8_t> new_pixel_data;
-    new_pixel_data.resize(pixel_data.size());
-
-    for (uint32_t y = 0; y < info_header.image_height; ++y) {
-        for (uint32_t x = 0; x < info_header.image_width; ++x) {
-            uint32_t source_pixel = channels * (y * info_header.image_width + x);
-            uint32_t destination_pixel = channels * (y + info_header.image_height * x);
-
-            new_pixel_data[destination_pixel + 0] = pixel_data[source_pixel + 0];
-            new_pixel_data[destination_pixel + 1] = pixel_data[source_pixel + 1];
-            new_pixel_data[destination_pixel + 2] = pixel_data[source_pixel + 2];
-
-            if (channels == 4)
-                new_pixel_data[destination_pixel + 3] = pixel_data[source_pixel + 3];
-        }
-    }
-
-    pixel_data = new_pixel_data;
-    std::swap(info_header.image_width, info_header.image_height);
-    std::swap(info_header.x_pixels_per_meter, info_header.y_pixels_per_meter);
-
-    return *this;
-}
-
-Bitmap& Bitmap::grayscale() {
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
-    for (uint32_t y = 0; y < info_header.image_height; ++y) {
-        for (uint32_t x = 0; x < info_header.image_width; ++x) {
-            Color color = get_pixel(x, y, channels);
+Image& Image::grayscale() {
+    for (uint32_t y = 0; y < get_height(); ++y) {
+        for (uint32_t x = 0; x < get_width(); ++x) {
+            Color color = get_pixel(x, y);
             uint32_t grayscale = color.R * .299 + color.G * .587 + color.B * .144;
-            set_pixel(x, y, Color(grayscale, grayscale, grayscale), channels);
+            set_pixel(x, y, Color(grayscale, grayscale, grayscale));
         }
     }
 
     return *this;
 }
 
-Bitmap& Bitmap::inverse() {
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
-    for (uint32_t y = 0; y < info_header.image_height; ++y) {
-        for (uint32_t x = 0; x < info_header.image_width; ++x) {
-            Color color = get_pixel(x, y, channels);
-            set_pixel(x, y, Color(0xFF - color.R, 0xFF - color.G, 0xFF - color.B), channels);
+Image& Image::inverse() {
+    for (uint32_t y = 0; y < get_height(); ++y) {
+        for (uint32_t x = 0; x < get_width(); ++x) {
+            Color color = get_pixel(x, y);
+            set_pixel(x, y, Color(0xFF - color.R, 0xFF - color.G, 0xFF - color.B));
         }
     }
 
@@ -220,24 +385,22 @@ double bicubic_interpolate (double Q[4][4], uint32_t x, uint32_t y) {
     return cubic_interpolate(temp, x);
 }
 
-Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
-    uint32_t channels = info_header.bits_per_pixel == 32 ? 4 : 3;
-
+Image& Image::resize(uint32_t width, uint32_t height, Interpolation mode) {
     std::vector<uint8_t> new_pixel_data;
 
     float x_ratio, y_ratio;
     switch (mode) {
         case Interpolation::NearestNeighbour:
-            x_ratio = static_cast<float>(width) / static_cast<float>(info_header.image_width);
-            y_ratio = static_cast<float>(height) / static_cast<float>(info_header.image_height);
+            x_ratio = static_cast<float>(width) / static_cast<float>(get_width());
+            y_ratio = static_cast<float>(height) / static_cast<float>(get_height());
             break;
         case Interpolation::Bilinear:
-            x_ratio = static_cast<float>(info_header.image_width - 1) / static_cast<float>(width); // NOTE: Using these ratios for NN interpolation gives an interesting result
-            y_ratio = static_cast<float>(info_header.image_height - 1) / static_cast<float>(height);
+            x_ratio = static_cast<float>(get_width() - 1) / static_cast<float>(width); // NOTE: Using these ratios for NN interpolation gives an interesting result
+            y_ratio = static_cast<float>(get_height() - 1) / static_cast<float>(height);
             break;
         case Interpolation::Bicubic:
-            x_ratio = static_cast<float>(info_header.image_width) / static_cast<float>(width);
-            y_ratio = static_cast<float>(info_header.image_height) / static_cast<float>(height);
+            x_ratio = static_cast<float>(get_width()) / static_cast<float>(width);
+            y_ratio = static_cast<float>(get_height()) / static_cast<float>(height);
             break;
     }
 
@@ -254,9 +417,6 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                     new_pixel_data.push_back(source_pixel.G);
                     new_pixel_data.push_back(source_pixel.R);
 
-                    if (channels == 4)
-                        new_pixel_data.push_back(source_pixel.A);
-
                     break;
                 }
 
@@ -267,10 +427,10 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                     float x_diff = (x_ratio * x) - source_x;
                     float y_diff = (y_ratio * y) - source_y;
 
-                    Color Q11 = get_pixel(source_x, source_y, channels);
-                    Color Q21 = get_pixel(source_x + 1, source_y, channels);
-                    Color Q12 = get_pixel(source_x, source_y + 1, channels);
-                    Color Q22 = get_pixel(source_x + 1, source_y + 1, channels);
+                    Color Q11 = get_pixel(source_x, source_y);
+                    Color Q21 = get_pixel(source_x + 1, source_y);
+                    Color Q12 = get_pixel(source_x, source_y + 1);
+                    Color Q22 = get_pixel(source_x + 1, source_y + 1);
 
                     float blue = Q11.B * (1 - x_diff) * (1 - y_diff) + Q21.B * x_diff * (1 - y_diff) + Q12.B * y_diff * (1 - x_diff) + Q22.B * (x_diff * y_diff);
                     float green = Q11.G * (1 - x_diff) * (1 - y_diff) + Q21.G * x_diff * (1 - y_diff) + Q12.G * y_diff * (1 - x_diff) + Q22.G * (x_diff * y_diff);
@@ -279,11 +439,6 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                     new_pixel_data.push_back(static_cast<uint8_t>(blue));
                     new_pixel_data.push_back(static_cast<uint8_t>(green));
                     new_pixel_data.push_back(static_cast<uint8_t>(red));
-
-                    if (channels == 4) {
-                        float alpha = Q11.A * (1 - x_diff) * (1 - y_diff) + Q21.A * x_diff * (1 - y_diff) + Q12.A * y_diff * (1 - x_diff) + Q22.A * (x_diff * y_diff);
-                        new_pixel_data.push_back(static_cast<uint8_t>(alpha));
-                    }
                     break;
                 }
 
@@ -300,27 +455,27 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
                     double Q[4][4] {0};
                     for (int i = 0; i < 4; ++i) {
                         for (int j = 0; j < 4; ++j) {
-                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, info_header.image_width - 1);
-                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, info_header.image_height - 1);
-                            Q[i][j] = get_pixel(t_x, t_y, channels).B;
+                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, static_cast<int>(get_width()) - 1);
+                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, static_cast<int>(get_height()) - 1);
+                            Q[i][j] = get_pixel(t_x, t_y).B;
                         }
                     }
 
                     new_pixel_data.push_back(static_cast<uint8_t>(std::round(bicubic_interpolate(Q, x_origin_frac, y_origin_frac))));
                     for (int i = 0; i < 4; ++i) {
                         for (int j = 0; j < 4; ++j) {
-                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, info_header.image_width - 1);
-                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, info_header.image_height - 1);
-                            Q[i][j] = get_pixel(t_x, t_y, channels).G;
+                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, static_cast<int>(get_width()) - 1);
+                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, static_cast<int>(get_height()) - 1);
+                            Q[i][j] = get_pixel(t_x, t_y).G;
                         }
                     }
 
                     new_pixel_data.push_back(static_cast<uint8_t>(std::round(bicubic_interpolate(Q, x_origin_frac, y_origin_frac))));
                     for (int i = 0; i < 4; ++i) {
                         for (int j = 0; j < 4; ++j) {
-                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, info_header.image_width - 1);
-                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, info_header.image_height - 1);
-                            Q[i][j] = get_pixel(t_x, t_y, channels).R;
+                            int t_x = std::clamp(static_cast<int>(std::round(x_origin_floor)) + j - 1, 0, static_cast<int>(get_width()) - 1);
+                            int t_y = std::clamp(static_cast<int>(std::round(y_origin_floor)) + i - 1, 0, static_cast<int>(get_height()) - 1);
+                            Q[i][j] = get_pixel(t_x, t_y).R;
                         }
                     }
 
@@ -331,36 +486,8 @@ Bitmap& Bitmap::resize(uint32_t width, uint32_t height, Interpolation mode) {
         }
     }
 
-    info_header.image_width = width;
-    info_header.image_height = height;
-
-    pixel_data = new_pixel_data;
-    header.data_offset = sizeof(info_header) + sizeof(header);
-    header.file_size = header.data_offset + pixel_data.size();
-
-    return *this;
-}
-
-Color Bitmap::get_pixel(uint32_t x, uint32_t y, uint8_t channels) {
-    uint32_t current_pixel = channels * (y * info_header.image_width + x);
-
-    uint8_t B = pixel_data[current_pixel + 0];
-    uint8_t G = pixel_data[current_pixel + 1];
-    uint8_t R = pixel_data[current_pixel + 2];
-    uint8_t A = channels == 4 ? pixel_data[current_pixel + 3] : 0;
-
-    return Color(R, G, B, A);
-}
-
-Bitmap& Bitmap::set_pixel(uint32_t x, uint32_t y, Color color, uint8_t channels) {
-    uint32_t current_pixel = channels * (y * info_header.image_width + x);
-
-    pixel_data[current_pixel + 0] = color.B;
-    pixel_data[current_pixel + 1] = color.G;
-    pixel_data[current_pixel + 2] = color.R;
-
-    if (channels == 4)
-        pixel_data[current_pixel + 3] = color.A;
+    set_pixel_data(new_pixel_data);
+    set_dimensions(width, height);
 
     return *this;
 }
