@@ -47,3 +47,7 @@ target/
 # Project specific
 bitmaps/
 compile_commands.json
+
+.direnv
+.envrc
+
