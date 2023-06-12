@@ -125,22 +125,24 @@ GIF& GIF::read(std::string file_name) {
     std::ifstream stream(file_name, std::ios::binary);
 
     if (stream) {
+        // Header
         stream.read(reinterpret_cast<char*>(&header), sizeof(header));
-
         uint8_t signature[3] { 0x47, 0x49, 0x46 };
-
         if (header.signature != signature)
             throw file_name + " is not a valid GIF file!";
 
+        // LogicalScreenDescriptor
         stream.read(reinterpret_cast<char*>(&lsd), sizeof(lsd));
 
-        if (((lsd.packed_field >> 7) & 0b00000001) == 0b00000001) {
-            uint8_t table_size = lsd.packed_field & 0b00000111;
+        // Global color table
+        bool use_global_color_table = ((lsd.packed_field >> 7) & 1) == 1 ? true : false;
+
+        if (use_global_color_table) {
+            uint8_t table_size = lsd.packed_field & 0b111;
             for (int i = 0; i < std::pow(2, table_size + 1); ++i) {
                 Color current_color;
                 for (int j = 0; j < 3; ++j) {
                     uint8_t current_color_channel = 0;
-
                     stream.read(reinterpret_cast<char*>(&current_color_channel), sizeof(current_color_channel));
                     switch (j) {
                         case 0:
@@ -160,6 +162,8 @@ GIF& GIF::read(std::string file_name) {
                 global_color_table.insert(current_color);
             }
         }
+
+        // Images
     }
 
     return *this;

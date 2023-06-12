@@ -191,18 +191,20 @@ struct GIF : Image {
     Color get_pixel(uint32_t x, uint32_t y) override;
 
    private:
+    // Exactly 6 bytes
     struct Header {
         uint8_t signature[3] { 0x47, 0x49, 0x46 };
         uint8_t version[3] { 0x38, 0x39, 0x61 }; // GIF89a is default
     };
 
+    // Exactly 7 bytes
     struct LogicalScreenDescriptor {
         uint8_t canvas_width[2] { 0, 0 };
         uint8_t canvas_height[2] { 0, 0 };
         uint8_t packed_field {0};
         uint8_t background_color_index {0};
         uint8_t pixel_aspect_ratio {0};
-    };
+    } __attribute__((packed));
 
     struct GifImage {
         struct ImageDescriptor {
@@ -212,7 +214,7 @@ struct GIF : Image {
             uint16_t image_width { 0 };
             uint16_t image_height { 0 };
             uint8_t packed_field {0};
-        };
+        } __attribute__((packed));
 
         struct DataSubBlock { // Continiously read these until 0 length is met
             uint8_t length;
