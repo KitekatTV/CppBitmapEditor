@@ -122,7 +122,7 @@ Bitmap& Bitmap::set_pixel(uint32_t x, uint32_t y, Color color) {
 }
 
 GIF& GIF::read(std::string file_name) {
-    std::ifstream stream(file_name, std::ios::binary);
+    /* std::ifstream stream(file_name, std::ios::binary);
 
     if (stream) {
         // Header
@@ -166,7 +166,9 @@ GIF& GIF::read(std::string file_name) {
         // Images
     }
 
-    return *this;
+    return *this;*/
+
+    throw "Under construction";
 }
 
 std::vector<uint8_t> GIF::GifImage::full_pixel_data() {
@@ -179,6 +181,7 @@ std::vector<uint8_t> GIF::GifImage::full_pixel_data() {
 }
 
 GIF& GIF::write(std::string file_name) {
+    /*
     std::ofstream stream(file_name, std::ios::binary);
 
     stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
@@ -245,7 +248,9 @@ GIF& GIF::write(std::string file_name) {
 
     stream.write(reinterpret_cast<const char*>(&trailer), sizeof(trailer));
 
-    return *this;
+    return *this;*/
+
+    throw "Under construction";
 }
 
 Image& Image::crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height) {
