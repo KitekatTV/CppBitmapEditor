@@ -10,6 +10,10 @@ int main() {
     is_windows = true;
 #endif
 
+    GIF gif("bitmaps/sample_1.gif");
+    gif.write("bitmaps/new.gif");
+    return 0;
+
     for (std::string file : {"640x426", "1920x1280", "5184x3456"}) {
         std::string source = is_windows ? "bitmaps\\BMP_" + file + ".bmp" : "bitmaps/BMP_" + file + ".bmp";
         std::string destination = (is_windows ? "bitmaps\\test_" + file + "\\" : "bitmaps/test_" + file + "/");

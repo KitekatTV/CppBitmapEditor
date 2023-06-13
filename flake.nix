@@ -10,8 +10,8 @@
     flake-utils.lib.eachDefaultSystem (system:
       let pkgs = import nixpkgs { inherit system; };
       in {
-        devShell = pkgs.mkShell rec {
-          name = "CppImageEditor";
+        devShells.default = pkgs.mkShell rec {
+          name = "C++";
 
           packages = with pkgs; [
             # Dev tools
@@ -24,7 +24,7 @@
           ];
 
           shellHook = ''
-            export PS1="Nix! DevEnv: C++ | ${name} > "
+            export PS1="Nix! DevEnv: ${name} > "
           '';
         };
 

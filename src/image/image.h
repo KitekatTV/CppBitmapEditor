@@ -1,11 +1,14 @@
-#ifndef IMAGE
-#define IMAGE
+#ifndef CIE_IMAGE
+#define CIE_IMAGE
 
 #include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <vector>
+#include <set>
+
+#pragma region Misc
 
 enum Interpolation {
     NearestNeighbour,
@@ -16,77 +19,56 @@ enum Interpolation {
 struct Color {
     uint32_t raw();
 
-    uint8_t R, G, B, A;
+    uint8_t R, G, B;
 
     Color(
         uint8_t R,
         uint8_t G,
-        uint8_t B,
-        uint8_t A = 0)
-        : R(R), G(G), B(B), A(A) {}
+        uint8_t B
+    ) : R(R), G(G), B(B) {}
 
-    Color() : R(0), G(0), B(0), A(0) {}
+    Color() : R(0), G(0), B(0) {}
 };
 
-struct Bitmap {
+#pragma endregion
+
+struct Image {
+    Image() {};
+
    public:
-    Bitmap(std::string file_name);
+    virtual Image& set_pixel_data(std::vector<uint8_t> new_pixel_data) = 0;
 
-    Bitmap& read(std::string file_name);
+    virtual std::vector<uint8_t>& get_pixel_data() = 0;
 
-    Bitmap& write(std::string file_name);
+    virtual Image& set_dimensions(uint32_t width, uint32_t height) = 0;
 
-    Bitmap& crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height);
+    virtual uint32_t get_width() = 0;
 
-    Bitmap& flip();
+    virtual uint32_t get_height() = 0;
 
-    Bitmap& rotate_clockwise();
+    virtual uint32_t get_horizontal_resolution() = 0;
 
-    Bitmap& rotate_counterclockwise();
+    virtual uint32_t get_vertical_resolution() = 0;
 
-    Bitmap& grayscale();
+    virtual uint8_t get_channels() = 0;
 
-    Bitmap& inverse();
+    virtual Image& set_pixel(uint32_t x, uint32_t y, Color color) = 0;
 
-    Bitmap& resize(uint32_t width, uint32_t height, Interpolation mode);
+    virtual Color get_pixel(uint32_t x, uint32_t y) = 0;
 
-    Bitmap& set_pixel(uint32_t x, uint32_t y, Color color, uint8_t channels = 3);
+    virtual Image& crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height);
 
-    Color get_pixel(uint32_t x, uint32_t y, uint8_t channels = 3);
+    virtual Image& flip();
 
-   private:
-    struct Header {
-        uint16_t signature{0x4D42};
-        uint32_t file_size{0};
-        uint32_t reserved{0};
-        uint32_t data_offset{0};
-    } __attribute__((packed));
+    virtual Image& rotate_clockwise();
 
-    struct InfoHeader {
-        uint32_t header_size{0};
-        int32_t image_width{0};
-        int32_t image_height{0};
-        uint16_t planes{0};
-        uint16_t bits_per_pixel{0};
-        uint32_t compression{0};
-        uint32_t image_size{0};
-        int32_t x_pixels_per_meter{0};
-        int32_t y_pixels_per_meter{0};
-        uint32_t colors_used{0};
-        uint32_t colors_important{0};
-    };
+    virtual Image& rotate_counterclockwise();
 
-    struct ColorData {
-        uint8_t red_intensity{0};
-        uint8_t green_intensity{0};
-        uint8_t blue_intensity{0};
-        uint8_t reserved{0};
-    };
+    virtual Image& grayscale();
 
-    Header header;
-    InfoHeader info_header;
-    std::vector<ColorData> color_table;
-    std::vector<uint8_t> pixel_data;
+    virtual Image& inverse();
+
+    virtual Image& resize(uint32_t width, uint32_t height, Interpolation mode);
 };
 
 #endif
