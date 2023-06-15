@@ -45,6 +45,10 @@ struct GIF : Image {
 
     Color get_pixel(uint32_t x, uint32_t y) override;
 
+    std::vector<int> generate_code_stream();
+
+    std::vector<std::string> generate_code_table();
+
    private:
     // Exactly 6 bytes
     struct Header {
@@ -72,8 +76,10 @@ struct GIF : Image {
         } __attribute__((packed));
 
         struct DataSubBlock {  // Continiously read these until 0 length is met
+            uint8_t min_code_size{2};
             uint8_t length;
             std::vector<uint8_t> data;
+            uint8_t trailer{0};
         };
 
         std::vector<uint8_t> full_pixel_data();
@@ -81,12 +87,12 @@ struct GIF : Image {
         ImageDescriptor image_descriptor;
         // std::set<Color> local_color_table; TODO: Local color table support
         uint8_t lzw_minimum_code_size;
-        std::vector<DataSubBlock> pixel_data;
+        DataSubBlock pixel_data;
     };
 
     Header header;
     LogicalScreenDescriptor lsd;
-    std::set<Color> global_color_table;
+    std::vector<Color> global_color_table;
     std::vector<GifImage> images;
     uint8_t trailer{0x3B};
 };

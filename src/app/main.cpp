@@ -81,12 +81,29 @@ int main(int argc, char* argv[]) {
         } else if (command == "test") {
             std::cout << "Testing write\n" << std::endl;
             bitmap.write(input_file.string());
+        } else {
+            std::cout << "Command not found!" << std::endl;
+            return 1;
         }
-    }
-    /* if (is_gif) {
+    } else {
         GIF gif{input_file.string()};
         if (command == "crop") {
-            gif.crop(0, 0, 100, 100).write(input_file.string());
+            if (argc < 7) {
+                std::cout << "Incorrect arguments to crop!\nUsage: imed <input file> crop <x0> <y0> <width> <height>";
+                return 1;
+            }
+
+            try {
+                int x0 = std::stoi(argv[3]);
+                int y0 = std::stoi(argv[4]);
+                int width = std::stoi(argv[5]);
+                int height = std::stoi(argv[6]);
+
+                gif.crop(x0, y0, width, height).write(input_file.string());
+            } catch (...) {
+                std::cout << "Incorrect arguments to crop!\nUsage: imed <input file> crop <x0> <y0> <width> <height>";
+                return 1;
+            }
         } else if (command == "flip") {
             gif.flip().write(input_file.string());
         } else if (command == "rcw") {
@@ -98,9 +115,37 @@ int main(int argc, char* argv[]) {
         } else if (command == "inverse") {
             gif.inverse().write(input_file.string());
         } else if (command == "resize") {
-            gif.resize(560, 560, Interpolation::NearestNeighbour).write(input_file.string());
+            if (argc < 6) {
+                std::cout << "Incorrect arguments to resize!\nUsage: imed <input file> resize <width> <height> <nn|bil|bic>";
+                return 1;
+            }
+
+            try {
+                int width = std::stoi(argv[3]);
+                int height = std::stoi(argv[4]);
+                std::string mode_str = argv[5];
+                if (mode_str == "nn") {
+                    gif.resize(width, height, Interpolation::NearestNeighbour).write(input_file.string());
+                } else if (mode_str == "bil") {
+                    gif.resize(width, height, Interpolation::Bilinear).write(input_file.string());
+                } else if (mode_str == "bic") {
+                    gif.resize(width, height, Interpolation::Bicubic).write(input_file.string());
+                } else {
+                    throw;
+                }
+
+            } catch (...) {
+                std::cout << "Incorrect arguments to resize!\nUsage: imed <input file> resize <width> <height> <nn|bil|bic>";
+                return 1;
+            }
+        } else if (command == "test") {
+            std::cout << "Testing write\n" << std::endl;
+            gif.write(input_file.string());
+        } else {
+            std::cout << "Command not found!" << std::endl;
+            return 1;
         }
-    }*/
+    }
 
     return 0;
 }

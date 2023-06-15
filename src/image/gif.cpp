@@ -1,4 +1,153 @@
 #include "gif.h"
+#include <bitset>
+#include <cmath>
+#include <iostream>
+
+template<typename T>
+int get_vector_index(std::vector<T> & vec, T element) {
+	return std::distance(vec.begin(), std::find(vec.begin(), vec.end(), element));
+}
+
+std::vector<int> split_and_parse(std::string s, std::string delimiter) {
+	size_t pos_start = 0, pos_end, delim_len = delimiter.length();
+	std::string token;
+	std::vector<int> res;
+
+	while ((pos_end = s.find(delimiter, pos_start)) != std::string::npos) {
+		token = s.substr(pos_start, pos_end - pos_start);
+		pos_start = pos_end + delim_len;
+		res.push_back(std::stoi(token));
+	}
+
+	return res;
+}
+
+std::vector<std::string> GIF::generate_code_table() {
+    std::vector<std::string> res;
+
+    for (int i = 0; i < global_color_table.size(); ++i) {
+        res.push_back(std::to_string(i));
+    }
+
+    res.push_back("CC");
+    res.push_back("EOIC");
+
+    return res;
+}
+
+std::vector<int> GIF::generate_code_stream() {
+    std::vector<int> res;
+    for (int i = 0; i < get_width(); ++i) {
+        for (int j = 0; j < get_height(); ++i) {
+            res.push_back(get_vector_index(global_color_table, get_pixel(i, j)));
+        }
+    }
+
+    return res;
+}
+
+void write_data(GIF* gif, std::ofstream * stream, std::vector<int> index_stream, int min_code_size) {
+	//std::vector<int> code_stream;
+	std::string index_buffer = "";
+
+	std::vector<bool> res; //!WRITER
+
+	// Initialize code table (from GCT)
+	std::vector<std::string> code_table = gif->generate_code_table(); //{ "0", "1", "2", "3", "CC", "EOIC" };
+
+	// Send clear code to the code stream
+	//code_stream.push_back(get_vector_index(code_table, std::string("CC")));
+	//!WRITER
+	std::string bits = std::bitset<32>(get_vector_index(code_table, std::string("CC"))).to_string();
+	bits.erase(0, std::min(bits.find_first_not_of('0'), bits.size() - 1));
+
+	std::vector<bool> temp;
+
+	for (int i = bits.length() - 1; i >= 0; --i)
+		temp.push_back(bits[i] == '1' ? true : false);
+
+	if (temp.size() < min_code_size) {
+		for (int i = 0; i < min_code_size - bits.length(); ++i)
+			temp.push_back(false);
+	}
+
+	for (bool bit : temp)
+		res.push_back(bit);
+
+
+	/*std::cout << "Bits: " << bits << " | Reverse: ";
+	for (bool i : temp)
+		std::cout << i;
+
+	std::cout << " | Code table last: #" << code_table.size() - 1 << " | Min code size: " << min_code_size << " | Code: " << get_vector_index(code_table, std::string("CC")) << std::endl;*/
+
+
+	int i = 0;
+	// Read first stream index
+	index_buffer = std::to_string(index_stream[i]);
+
+	// LOOP:
+	// Get next stream index, aka 'K'
+	while (i + 1 < index_stream.size()) {
+		i++; // HACK: Replace with 'for'?
+
+		std::string K = std::to_string(index_stream[i]);
+
+		// Is index buffer in our code table?
+		if (std::find(code_table.begin(), code_table.end(), index_buffer + K) != code_table.end()) {
+			index_buffer += K;
+		}
+		else {
+			code_table.push_back(index_buffer + K);
+			//code_stream.push_back(get_vector_index(code_table, index_buffer));
+
+			//!WRITER
+			std::string bits = std::bitset<32>(get_vector_index(code_table, index_buffer)).to_string();
+			bits.erase(0, std::min(bits.find_first_not_of('0'), bits.size() - 1));
+
+			std::vector<bool> temp;
+
+			for (int i = bits.length() - 1; i >= 0; --i)
+				temp.push_back(bits[i] == '1' ? true : false);
+
+			if (temp.size() < min_code_size) {
+				for (int i = 0; i < min_code_size - bits.length(); ++i)
+					temp.push_back(false);
+			}
+
+			for (bool bit : temp)
+				res.push_back(bit);
+
+
+			/*std::cout << "Bits: " << bits << " | Reverse: ";
+			for (bool i : temp)
+				std::cout << i;
+
+			std::cout << " | Code table last: #" << code_table.size() - 1 << " | Min code size: " << min_code_size << " | Code: " << get_vector_index(code_table, index_buffer) << std::endl;*/
+
+
+			if (code_table.size() - 1 == std::pow(2, min_code_size) - 1)
+				min_code_size++;
+
+			index_buffer = K;
+			K = "";
+		}
+	}
+
+	/*
+	for (int byte = 0; byte < res.size() / 8; ++byte) {
+		for (int bit = 7; bit >= 0; --bit) {
+			std::cout << (res[bit] == true ? 1 : 0);
+		}
+	}*/
+
+    stream->write(reinterpret_cast<const char*>(reinterpret_cast<uint64_t* const*>(&res)), res.size()); //  HACK: data() seems to be private?
+	// Send remaining buffer to the code stream
+	//code_stream.push_back(get_vector_index(code_table, index_buffer));
+
+	// Send end-of-info code to the code stream
+	//code_stream.push_back(get_vector_index(code_table, std::string("EOIC")));
+}
 
 GIF& GIF::read(std::string file_name) {
     /* std::ifstream stream(file_name, std::ios::binary);
@@ -50,17 +199,7 @@ GIF& GIF::read(std::string file_name) {
     throw "Under construction";
 }
 
-std::vector<uint8_t> GIF::GifImage::full_pixel_data() {
-    std::vector<uint8_t> data = pixel_data[0].data;
-
-    for (int i = 1; i < pixel_data.size(); ++i)
-        data.insert(data.end(), pixel_data[i].data.begin(), pixel_data[i].data.end());
-
-    return data;
-}
-
 GIF& GIF::write(std::string file_name) {
-    /*
     std::ofstream stream(file_name, std::ios::binary);
 
     stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
@@ -70,64 +209,72 @@ GIF& GIF::write(std::string file_name) {
         for (Color color : global_color_table)
             stream.write(reinterpret_cast<const char*>(color.raw()), sizeof(uint8_t) * 3);
     else
-        throw;
+        throw "Local color tables are not supported yet!";
 
     for (GifImage current_image : images) {
         stream.write(reinterpret_cast<const char*>(&current_image.image_descriptor), sizeof(current_image.image_descriptor));
-        std::set<std::string> code_table; // INFO: Special table for storing sequences of colours
-        std::vector<std::string> index_stream; // INFO: Input as color indexes from color table
-        std::vector<int> code_stream; // INFO: Output as codes from code table
-        std::string index_buffer; // INFO: Buffer for color indexes
-
-        std::vector<uint8_t> current_data = current_image.full_pixel_data();
-        for (uint8_t pixel : current_data)
-            index_stream.push_back(std::to_string(pixel));
-
-        // STEP 1: Initialize code table
-        // if (((current_image.image_descriptor.packed_field >> 7) & 0x1) == 0x1)
-        //     for (uint32_t i = 0; i < current_image.local_color_table.size(); ++i)
-        //         code_table.insert(std::to_string(i));
-        if (((lsd.packed_field >> 7) & 0x1) == 0x1)
-            for (uint32_t i = 0; i < global_color_table.size(); ++i)
-                code_table.insert(std::to_string(i));
-        else
-            throw;
-
-        code_table.insert("CC");
-        code_table.insert("EOI");
-
-        // STEP 2: Send clear code to the code stream
-        code_stream.push_back(std::distance(code_table.begin(), code_table.find("CC")));
-
-        // STEP 3: Read first value from index stream to buffer
-        index_buffer = index_stream[0];
-
-        // LOOP
-        int index = 1;
-        while (index < index_stream.size()) {
-            std::string K = index_stream[index]; // Get next index from index stream (K)
-
-            if (code_table.find(index_buffer + "," + K) != code_table.end()) {
-                index_buffer += "," + K; // Add K to the index buffer
-            } else {
-                code_table.insert(index_buffer + "," + K); // Add a new row for index buffer + K to the code table
-                code_stream.push_back(std::distance(code_table.begin(), code_table.find(index_buffer))); // Output code for just the buffer to the code stream
-                index_buffer = K; // Set index buffer to K
-                // Set K to nothing (Not required since K is local to cycle)
-            }
-
-            index++;
-        }
-
-        code_stream.push_back(std::distance(code_table.begin(), code_table.find(index_buffer))); // Output code for index buffer
-        code_stream.push_back(std::distance(code_table.begin(), code_table.find("EOI"))); // Output EOI code
-
-        stream.write(reinterpret_cast<const char*>(&code_stream), code_stream.size());
+        stream.write(reinterpret_cast<const char*>(&current_image.pixel_data.min_code_size), sizeof(uint8_t));
+        stream.write(reinterpret_cast<const char*>(&current_image.pixel_data.length), sizeof(uint8_t));
+        std::vector<int> index_stream = generate_code_stream();
+        write_data(this, &stream, index_stream, current_image.pixel_data.min_code_size);
+        stream.write(reinterpret_cast<const char*>(&current_image.pixel_data.trailer), sizeof(uint8_t));
     }
 
     stream.write(reinterpret_cast<const char*>(&trailer), sizeof(trailer));
+}
 
-    return *this;*/
+uint8_t GIF::get_channels() { throw "Under construction"; }
 
+uint32_t GIF::get_width() { throw "Under construction"; }
+
+uint32_t GIF::get_height() { throw "Under construction"; }
+
+uint32_t GIF::get_horizontal_resolution() { throw "Under construction"; }
+
+uint32_t GIF::get_vertical_resolution() { throw "Under construction"; }
+
+std::vector<uint8_t>& GIF::get_pixel_data() { throw "Under construction"; }
+
+GIF& GIF::set_dimensions(uint32_t width, uint32_t height) {
+    throw "Under construction";
+}
+
+GIF& GIF::set_pixel_data(std::vector<uint8_t> new_pixel_data) {
+    throw "Under construction";
+}
+
+GIF& GIF::crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height) {
+    throw "Under construction";
+};
+
+GIF& GIF::flip() {
+    throw "Under construction";
+};
+
+GIF& GIF::rotate_clockwise() {
+    throw "Under construction";
+};
+
+GIF& GIF::rotate_counterclockwise() {
+    throw "Under construction";
+};
+
+GIF& GIF::grayscale() {
+    throw "Under construction";
+};
+
+GIF& GIF::inverse() {
+    throw "Under construction";
+};
+
+GIF& GIF::resize(uint32_t width, uint32_t height, Interpolation mode) {
+    throw "Under construction";
+};
+
+Color GIF::get_pixel(uint32_t x, uint32_t y) {
+    throw "Under construction";
+}
+
+GIF& GIF::set_pixel(uint32_t x, uint32_t y, Color color) {
     throw "Under construction";
 }
