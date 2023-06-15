@@ -48,6 +48,11 @@ target/
 bitmaps/
 compile_commands.json
 
+# Nix & direnv
 .direnv
 .envrc
+result
 
+# Doxygen
+html/
+latex/

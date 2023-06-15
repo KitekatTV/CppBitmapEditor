@@ -15,10 +15,12 @@
 
           packages = with pkgs; [
             # Dev tools
+            llvmPackages_11.clang
             cmake
             cmakeCurses
 
             # Build time dependencies
+            gtest
 
             # Runtime dependencies
           ];

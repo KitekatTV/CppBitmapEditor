@@ -9,7 +9,7 @@ llvmPackages_11.stdenv.mkDerivation rec {
   nativeBuildInputs = [ cmake ];
 
   cmakeFlags = [
-    "-DENABLE_INSTALL=ON"
+
   ];
 
   meta = with lib; {
