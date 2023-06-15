@@ -150,7 +150,7 @@ void write_data(GIF* gif, std::ofstream * stream, std::vector<int> index_stream,
 }
 
 GIF& GIF::read(std::string file_name) {
-    /* std::ifstream stream(file_name, std::ios::binary);
+    std::ifstream stream(file_name, std::ios::binary);
 
     if (stream) {
         // Header
@@ -194,9 +194,7 @@ GIF& GIF::read(std::string file_name) {
         // Images
     }
 
-    return *this;*/
-
-    throw "Under construction";
+    return *this;
 }
 
 GIF& GIF::write(std::string file_name) {
@@ -210,6 +208,8 @@ GIF& GIF::write(std::string file_name) {
             stream.write(reinterpret_cast<const char*>(color.raw()), sizeof(uint8_t) * 3);
     else
         throw "Local color tables are not supported yet!";
+
+    // Global color table
 
     for (GifImage current_image : images) {
         stream.write(reinterpret_cast<const char*>(&current_image.image_descriptor), sizeof(current_image.image_descriptor));
@@ -233,48 +233,72 @@ uint32_t GIF::get_horizontal_resolution() { throw "Under construction"; }
 
 uint32_t GIF::get_vertical_resolution() { throw "Under construction"; }
 
-std::vector<uint8_t>& GIF::get_pixel_data() { throw "Under construction"; }
+std::vector<uint8_t>& GIF::get_pixel_data() { return images[0].pixel_data.data; }
 
 GIF& GIF::set_dimensions(uint32_t width, uint32_t height) {
-    throw "Under construction";
+    images[0].image_descriptor.image_width = width;
+    images[0].image_descriptor.image_height = height;
+    return *this;
 }
 
 GIF& GIF::set_pixel_data(std::vector<uint8_t> new_pixel_data) {
-    throw "Under construction";
+    images[0].pixel_data.data = std::move(new_pixel_data);
+    return *this;
 }
 
 GIF& GIF::crop(uint32_t x0, uint32_t y0, uint32_t width, uint32_t height) {
-    throw "Under construction";
+    Image::crop(x0, y0, width, height);
+    return *this;
 };
 
 GIF& GIF::flip() {
-    throw "Under construction";
+    Image::flip();
+    return *this;
 };
 
 GIF& GIF::rotate_clockwise() {
-    throw "Under construction";
+    Image::rotate_clockwise();
+    return *this;
 };
 
 GIF& GIF::rotate_counterclockwise() {
-    throw "Under construction";
+    Image::rotate_counterclockwise();
+    return *this;
 };
 
 GIF& GIF::grayscale() {
-    throw "Under construction";
+    Image::grayscale();
+    return *this;
 };
 
 GIF& GIF::inverse() {
-    throw "Under construction";
+    Image::inverse();
+    return *this;
 };
 
 GIF& GIF::resize(uint32_t width, uint32_t height, Interpolation mode) {
-    throw "Under construction";
+    Image::resize(width, height, mode);
+    return *this;
 };
 
 Color GIF::get_pixel(uint32_t x, uint32_t y) {
-    throw "Under construction";
-}
+    uint32_t current_pixel = get_channels() * (y * get_width() + x);
+    std::vector<uint8_t>& pixel_data = get_pixel_data();
+
+    uint8_t B = pixel_data[current_pixel + 0];
+    uint8_t G = pixel_data[current_pixel + 1];
+    uint8_t R = pixel_data[current_pixel + 2];
+
+    return Color(R, G, B);
+};
 
 GIF& GIF::set_pixel(uint32_t x, uint32_t y, Color color) {
-    throw "Under construction";
-}
+    uint32_t current_pixel = get_channels() * (y * get_width() + x);
+    std::vector<uint8_t>& pixel_data = get_pixel_data();
+
+    pixel_data[current_pixel + 0] = color.B;
+    pixel_data[current_pixel + 1] = color.G;
+    pixel_data[current_pixel + 2] = color.R;
+
+    return *this;
+};
